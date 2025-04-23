@@ -1,0 +1,59 @@
+#include <stdio.h>
+#include <string.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/uart.h"
+#include "esp_log.h"
+
+#define UART_PORT_NUM      UART_NUM_1
+#define UART_BAUD_RATE     9600
+#define UART_TX_GPIO_NUM   26
+#define UART_RX_GPIO_NUM   27
+#define UART_BUF_SIZE      1024
+
+static const char *TAG = "SIM7000G GPS";
+
+// Fonction pour envoyer une commande AT
+void sim7000g_send_command(const char *cmd) {
+    uart_write_bytes(UART_PORT_NUM, cmd, strlen(cmd));
+    uart_write_bytes(UART_PORT_NUM, "\r\n", 2);
+}
+
+// Fonction pour lire la réponse de l'AT
+void sim7000g_read_response() {
+    uint8_t data[UART_BUF_SIZE];
+    int len = uart_read_bytes(UART_PORT_NUM, data, UART_BUF_SIZE - 1, pdMS_TO_TICKS(1000));
+    if (len > 0) {
+        data[len] = '\0';
+        ESP_LOGI(TAG, "Response: %s", (char *)data);
+    }
+}
+
+// Initialisation de l'UART
+void uart_init() {
+    uart_config_t uart_config = {
+        .baud_rate = UART_BAUD_RATE,
+        .data_bits = UART_DATA_8_BITS,
+        .parity    = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
+    };
+    uart_param_config(UART_PORT_NUM, &uart_config);
+    uart_set_pin(UART_PORT_NUM, UART_TX_GPIO_NUM, UART_RX_GPIO_NUM, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    uart_driver_install(UART_PORT_NUM, UART_BUF_SIZE * 2, 0, 0, NULL, 0);
+}
+
+// Fonction principale pour lire les données GPS
+void app_main() {
+    uart_init();
+
+    // Allumer le GPS du SIM7000G
+    sim7000g_send_command("AT+CGNSPWR=1");  // Active le GPS
+    vTaskDelay(pdMS_TO_TICKS(1000));  // Attente de 1 seconde
+    sim7000g_read_response(); // Lire la réponse du module
+
+    // Demander les informations GPS
+    sim7000g_send_command("AT+CGNSINF");  // Demander les données GPS
+    vTaskDelay(pdMS_TO_TICKS(1000));  // Attente pour que la réponse soit reçue
+    sim7000g_read_response();  // Lire la réponse du module
+}
